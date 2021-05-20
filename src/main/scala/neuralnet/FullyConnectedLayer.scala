@@ -30,8 +30,7 @@ class FullyConnectedLayerIO extends Bundle {
 class FullyConnectedLayer extends Module {
   val io = IO(new FullyConnectedLayerIO)
   val state = RegInit(NeuronState.ready)
-  val weights = RegInit(VecInit(Seq.tabulate(InputSize)(i =>
-    VecInit(Seq.fill(OutputSize)(1.F(DataWidth, DataBinaryPoint))))))
+  val weights = RegInit(VecInit(Seq.fill(InputSize)(VecInit(Seq.fill(OutputSize)(1.F(DataWidth, DataBinaryPoint))))))
   val bias = RegInit(VecInit(Seq.fill(OutputSize)(0.F(DataWidth, DataBinaryPoint))))
 
   io.weights.ready := true.B
