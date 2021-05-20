@@ -23,6 +23,7 @@ lazy val root = (project in file("."))
     addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % "3.4.3" cross CrossVersion.full),
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full),
 
+    // show full stacktraces in test failures
     testOptions in Test += Tests.Argument("-oF")
   )
 
