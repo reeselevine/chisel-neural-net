@@ -1,0 +1,5 @@
+package neuralnet
+
+class ActivationLayer {
+
+}
