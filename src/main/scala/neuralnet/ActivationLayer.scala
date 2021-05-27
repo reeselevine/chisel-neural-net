@@ -1,7 +1,6 @@
 package neuralnet
 
 import chisel3._
-import chisel3.experimental.FixedPoint
 import chisel3.util._
 import neuralnet.NeuralNet.{DataBinaryPoint, DataWidth, NeuronState}
 

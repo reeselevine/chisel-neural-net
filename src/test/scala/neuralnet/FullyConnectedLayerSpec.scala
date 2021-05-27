@@ -22,11 +22,18 @@ class FullyConnectedLayerSpec extends FreeSpec with ChiselScalatestTester {
       dut.io.output.bits.foreach(bit => bit.expect(4.5.F(DataWidth, DataBinaryPoint)))
     }
   }
+}
+
+object FullyConnectedLayerSpec {
+  val TestInputNeurons = 2
+  val TestOutputNeurons = 1
+  val TestAdjust = 0.5
+  val fcLayerDefaultParams = FullyConnectedLayerParams(TestInputNeurons, TestOutputNeurons, TestAdjust)
 
   class TestFullyConnectedLayer(
                                  inputWeightValue: Double,
                                  inputBiasValue: Double,
-                                 params: FullyConnectedLayerParams = FullyConnectedLayerParams(TestInputNeurons, TestOutputNeurons, TestAdjust))
+                                 params: FullyConnectedLayerParams = fcLayerDefaultParams)
     extends FullyConnectedLayer(params) {
     override def getInitialWeights(): Vec[Vec[FixedPoint]] = {
       VecInit(Seq.fill(params.inputSize)(VecInit(Seq.fill(params.outputSize)(inputWeightValue.F(DataWidth, DataBinaryPoint)))))
@@ -36,10 +43,4 @@ class FullyConnectedLayerSpec extends FreeSpec with ChiselScalatestTester {
       VecInit(Seq.fill(params.outputSize)(inputBiasValue.F(DataWidth, DataBinaryPoint)))
     }
   }
-}
-
-object FullyConnectedLayerSpec {
-  val TestInputNeurons = 2
-  val TestOutputNeurons = 1
-  val TestAdjust = 0.5
 }
