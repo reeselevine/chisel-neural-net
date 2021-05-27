@@ -1,7 +1,7 @@
 package neuralnet
 
 import chisel3._
-import chisel3.experimental.FixedPoint
+import chisel3.experimental.{ChiselEnum, FixedPoint}
 import chisel3.util._
 import neuralnet.NeuralNet._
 
@@ -15,6 +15,10 @@ object NeuralNet {
   val LearningRate = 0.1
   val MaxTrainingSamples = 1000
   val MaxPredictSamples = 10
+
+  object NeuronState extends ChiselEnum {
+    val ready, reset, forwardProp, backwardProp = Value
+  }
 }
 
 /**
@@ -37,7 +41,6 @@ class NeuralNet extends Module {
   /** Need to figure out best way to build a modular net. But to start, we can manually define which layers
    * are being used and connect them as part of this module.
    */
-  val fcLayer = Module(new FullyConnectedLayer)
 
   val io = IO(new NeuralNetIO)
 

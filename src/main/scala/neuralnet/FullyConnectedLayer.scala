@@ -1,26 +1,17 @@
 package neuralnet
 
 import chisel3._
-import chisel3.experimental.{ChiselEnum, FixedPoint}
+import chisel3.experimental.FixedPoint
 import chisel3.util._
-import neuralnet.FullyConnectedLayer._
+import neuralnet.NeuralNet.{DataBinaryPoint, DataWidth, NeuronState}
 
 import scala.util.Random
 
-object FullyConnectedLayer {
-  val InputSize = 2
-  val OutputSize = 1
-  val DataWidth = 32.W
-  val DataBinaryPoint = 16.BP
-  val Adjust = 0.5
-  object NeuronState extends ChiselEnum {
-    val ready, reset, forwardProp, backwardProp = Value
-  }
-}
+case class FullyConnectedLayerParams(inputSize: Int, outputSize: Int, adjust: Double)
 
-class FullyConnectedLayerIO extends Bundle {
-  val input = Flipped(Decoupled(Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint))))
-  val output = Decoupled(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+class FullyConnectedLayerIO(params: FullyConnectedLayerParams) extends Bundle {
+  val input = Flipped(Decoupled(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint))))
+  val output = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
   val nextState = Flipped(Decoupled(NeuronState()))
 }
 
@@ -28,9 +19,9 @@ class FullyConnectedLayerIO extends Bundle {
  * Implements a fully connected layer in a neural net, where each input neuron affects each output neuron
  * with weights defined in a stored matrix.
  */
-class FullyConnectedLayer extends Module {
+class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
   val r = Random
-  val io = IO(new FullyConnectedLayerIO)
+  val io = IO(new FullyConnectedLayerIO(params))
   val state = RegInit(NeuronState.ready)
   val weightsValues = getInitialWeights()
   val weights = RegInit(weightsValues)
@@ -39,7 +30,7 @@ class FullyConnectedLayer extends Module {
 
   io.input.ready := true.B
   io.nextState.ready := true.B
-  io.output.bits := VecInit(Seq.fill(OutputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   io.output.valid := false.B
 
@@ -61,8 +52,8 @@ class FullyConnectedLayer extends Module {
       when(io.input.fire()) {
         val inputData = io.input.bits
         // computes the dot product for each output neuron using the input neurons and their defined weights.
-        (0 until OutputSize).foreach { j =>
-          val dotProduct = (0 until InputSize).foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, i) =>
+        (0 until params.outputSize).foreach { j =>
+          val dotProduct = (0 until params.inputSize).foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, i) =>
             sum + inputData(i) * weights(i)(j)
           }
           io.output.bits(j) := dotProduct + bias(j)
@@ -73,12 +64,12 @@ class FullyConnectedLayer extends Module {
   }
 
   def getInitialWeights(): Vec[Vec[FixedPoint]] = {
-    VecInit(Seq.fill(InputSize)(VecInit(Seq.tabulate(OutputSize)(_ =>
-      (r.nextDouble() - Adjust).F(DataWidth, DataBinaryPoint)))))
+    VecInit(Seq.fill(params.inputSize)(VecInit(Seq.tabulate(params.outputSize)(_ =>
+      (r.nextDouble() - params.adjust).F(DataWidth, DataBinaryPoint)))))
   }
 
   def getInitialBias(): Vec[FixedPoint] = {
-    VecInit(Seq.tabulate(OutputSize)(_ =>
-      (r.nextDouble() - Adjust).F(DataWidth, DataBinaryPoint)))
+    VecInit(Seq.tabulate(params.outputSize)(_ =>
+      (r.nextDouble() - params.adjust).F(DataWidth, DataBinaryPoint)))
   }
 }
