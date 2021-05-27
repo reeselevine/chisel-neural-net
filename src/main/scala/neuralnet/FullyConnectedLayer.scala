@@ -5,19 +5,20 @@ import chisel3.experimental.{ChiselEnum, FixedPoint}
 import chisel3.util._
 import neuralnet.FullyConnectedLayer._
 
+import scala.util.Random
+
 object FullyConnectedLayer {
   val InputSize = 2
   val OutputSize = 1
   val DataWidth = 32.W
   val DataBinaryPoint = 16.BP
+  val Adjust = 0.5
   object NeuronState extends ChiselEnum {
-    val ready, init, forwardProp, backwardProp = Value
+    val ready, reset, forwardProp, backwardProp = Value
   }
 }
 
 class FullyConnectedLayerIO extends Bundle {
-  val weights = Flipped(Decoupled(Vec(InputSize, Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))))
-  val bias = Flipped(Decoupled(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint))))
   val input = Flipped(Decoupled(Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint))))
   val output = Decoupled(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
   val nextState = Flipped(Decoupled(NeuronState()))
@@ -28,13 +29,14 @@ class FullyConnectedLayerIO extends Bundle {
  * with weights defined in a stored matrix.
  */
 class FullyConnectedLayer extends Module {
+  val r = Random
   val io = IO(new FullyConnectedLayerIO)
   val state = RegInit(NeuronState.ready)
-  val weights = RegInit(VecInit(Seq.fill(InputSize)(VecInit(Seq.fill(OutputSize)(1.F(DataWidth, DataBinaryPoint))))))
-  val bias = RegInit(VecInit(Seq.fill(OutputSize)(0.F(DataWidth, DataBinaryPoint))))
+  val weightsValues = getInitialWeights()
+  val weights = RegInit(weightsValues)
+  val biasValues = getInitialBias()
+  val bias = RegInit(biasValues)
 
-  io.weights.ready := true.B
-  io.bias.ready := true.B
   io.input.ready := true.B
   io.nextState.ready := true.B
   io.output.bits := VecInit(Seq.fill(OutputSize)(0.F(DataWidth, DataBinaryPoint)))
@@ -49,12 +51,10 @@ class FullyConnectedLayer extends Module {
       }
     }
     // Initializes (or resets) this layer with the given weights and bias.
-    is(NeuronState.init) {
-      when(io.weights.fire && io.bias.fire) {
-        weights := io.weights.bits
-        bias := io.bias.bits
-        state := NeuronState.ready
-      }
+    is(NeuronState.reset) {
+      weights := weightsValues
+      bias := biasValues
+      state := NeuronState.ready
     }
     // Performs forward propagation, for either training or prediction.
     is(NeuronState.forwardProp) {
@@ -70,5 +70,15 @@ class FullyConnectedLayer extends Module {
         io.output.valid := true.B
       }
     }
+  }
+
+  def getInitialWeights(): Vec[Vec[FixedPoint]] = {
+    VecInit(Seq.fill(InputSize)(VecInit(Seq.tabulate(OutputSize)(_ =>
+      (r.nextDouble() - Adjust).F(DataWidth, DataBinaryPoint)))))
+  }
+
+  def getInitialBias(): Vec[FixedPoint] = {
+    VecInit(Seq.tabulate(OutputSize)(_ =>
+      (r.nextDouble() - Adjust).F(DataWidth, DataBinaryPoint)))
   }
 }

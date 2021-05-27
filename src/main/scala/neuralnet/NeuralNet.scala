@@ -24,8 +24,8 @@ object NeuralNet {
 class NeuralNetIO extends Bundle {
   val train = Input(Bool())
   val predict = Input(Bool())
-  val sample = Input(Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint))))
-  val validation = Input(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint))))
+  val sample = Input(Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val validation = Input(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
   val numSamples = Flipped(Decoupled(UInt(32.W)))
   val result = Decoupled(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
 }
