@@ -28,7 +28,7 @@ class ActivationLayerSpec extends FreeSpec with ChiselScalatestTester {
 }
 
 object ActivationLayerSpec {
-  val defaultParams = ActivationLayerParams(4)
+  val defaultParams = LayerParams(4, 4)
   val defaultInput = Seq(1.0, -1.0, 0.5, 0.0)
   val reluOutput =  Seq(1.0, 0.0, 0.5, 0.0)
 }

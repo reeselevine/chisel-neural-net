@@ -5,24 +5,15 @@ import chisel3.experimental.FixedPoint
 import chisel3.util._
 import neuralnet.NeuralNet.{DataBinaryPoint, DataWidth, NeuronState}
 
-case class ActivationLayerParams(size: Int)
-
-class ActivationLayerIO(params: ActivationLayerParams) extends Bundle {
-  val input = Flipped(Decoupled(Vec(params.size, FixedPoint(DataWidth, DataBinaryPoint))))
-  val output = Decoupled(Vec(params.size, FixedPoint(DataWidth, DataBinaryPoint)))
-  val nextState = Flipped(Decoupled(NeuronState()))
-}
-
 /** Implements an activation layer, for creating non-linear neural nets */
-class ActivationLayer(params: ActivationLayerParams) extends Module {
+class ActivationLayer(params: LayerParams) extends Layer(params) {
 
-  val io = IO(new ActivationLayerIO(params))
   val state = RegInit(NeuronState.ready)
 
   io.input.ready := true.B
   io.nextState.ready := true.B
   io.output.valid := false.B
-  io.output.bits := VecInit(Seq.fill(params.size)(0.F(DataWidth, DataBinaryPoint)))
+  io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   switch(state) {
     is(NeuronState.ready) {
@@ -34,7 +25,7 @@ class ActivationLayer(params: ActivationLayerParams) extends Module {
     is(NeuronState.forwardProp) {
       when(io.input.fire()) {
         val inputData = io.input.bits
-        (0 until params.size).foreach { i =>
+        (0 until params.outputSize).foreach { i =>
           when(inputData(i) > 0.F(DataWidth, DataBinaryPoint)) {
             io.output.bits(i) := inputData(i)
           } .otherwise {

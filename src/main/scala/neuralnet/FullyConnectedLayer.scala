@@ -3,35 +3,27 @@ package neuralnet
 import chisel3._
 import chisel3.experimental.FixedPoint
 import chisel3.util._
-import neuralnet.NeuralNet.{DataBinaryPoint, DataWidth, NeuronState}
-
+import neuralnet.NeuralNet._
 import scala.util.Random
 
-case class FullyConnectedLayerParams(inputSize: Int, outputSize: Int, adjust: Double)
-
-class FullyConnectedLayerIO(params: FullyConnectedLayerParams) extends Bundle {
-  // Input from left layer.
-  val input = Flipped(Decoupled(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint))))
-  // Error passed in by the right layer (this layer's current output).
-  val output_error = Flipped(Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint))))
-  // Error passed to the left layer (this current layer's input).
-  val input_error = Decoupled(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  // Output to right layer.
-  val output = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  // Next state command from NeuralNet.
-  val nextState = Flipped(Decoupled(NeuronState()))
-}
+case class FullyConnectedLayerParams(
+                                      override val inputSize: Int,
+                                      override val outputSize: Int,
+                                      adjust: Double)
+  extends LayerParams(inputSize, outputSize)
 
 /**
  * Implements a fully connected layer in a neural net, where each input neuron affects each output neuron
  * with weights defined in a stored matrix.
  */
-class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
+class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(params) {
+
   val r = Random
-  val io = IO(new FullyConnectedLayerIO(params))
   val state = RegInit(NeuronState.ready)
-  val weights = RegInit(getInitialWeights()) // Input weights.
-  val bias = RegInit(getInitialBias())       // Neuron biases.
+  val initialWeights = getInitialWeights()
+  val initialBias = getInitialBias()
+  val weights = RegInit(initialWeights) // Input weights.
+  val bias = RegInit(initialBias)       // Neuron biases.
 
   io.input.ready := true.B
   io.nextState.ready := true.B
@@ -52,8 +44,8 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
     }
     // Initializes (or resets) this layer with the given weights and bias.
     is(NeuronState.reset) {
-      weights := weightsValues
-      bias := biasValues
+      weights := initialWeights
+      bias := initialBias
       state := NeuronState.ready
     }
     // Performs forward propagation, for either training or prediction.
@@ -75,7 +67,6 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
           }
         }
         io.output.valid := true.B
-
         // Wait for next state change.
         state := NeuronState.ready
       }
@@ -95,7 +86,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
 
           io.output_error(j) * deriv;
         }
-      
+
         // Update weights and biases.
         for (j <- 0 until params.outputSize) {
           for (i <- 0 until params.inputSize) {
@@ -117,6 +108,8 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
         io.input_error.valid := true.B
 
         // Wait for next state change.
+=======
+>>>>>>> Layer refactor
         state := NeuronState.ready
       }
     }

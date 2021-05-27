@@ -18,9 +18,6 @@ object NeuralNet {
     val ready, reset, forwardProp, backwardProp = Value
   }
 
-  sealed trait Layer
-  case class FCLayer(params: FullyConnectedLayerParams) extends Layer
-  case class ALayer(params: ActivationLayerParams) extends Layer
 }
 
 case class NeuralNetParams(inputSize: Int, outputSize: Int, layers: Seq[Layer])
@@ -46,11 +43,8 @@ class NeuralNet(params: NeuralNetParams) extends Module {
 
   // Way to define a set of layers with registers to hold the output from each layer. Output from one layer is used
   // as input to next layer. Goal is to get this working, then think about optimization.
-  val layersWithOutputRegs = params.layers.map {
-    case FCLayer(params) =>
-      (Module(new FullyConnectedLayer(params)), RegInit(VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
-    case ALayer(params) =>
-      (Module(new ActivationLayer(params)), RegInit(VecInit(Seq.fill(params.size)(0.F(DataWidth, DataBinaryPoint)))))
+  val layersWithOutputRegs = params.layers.map { layer =>
+    (Module(layer), RegInit(VecInit(Seq.fill(layer.params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
   }
 
   /** Memory used to store the training data, so it can be run over multiple epochs easily. */
@@ -78,6 +72,7 @@ class NeuralNet(params: NeuralNetParams) extends Module {
         state := predicting
         numSamples := io.numSamples.bits
         sampleIndex := 0.U
+        curLayer.reset()
       }
     }
     // prepare training data and validation set
@@ -95,7 +90,29 @@ class NeuralNet(params: NeuralNetParams) extends Module {
       //todo: training step (do number of epochs, forward/back-prop/loss fn
     }
     is(predicting) {
-      //todo: do forward prop, send result back as output
+      layersWithOutputRegs.zipWithIndex.foreach {
+        case ((layer, outputReg), idx) =>
+          when(curLayer.value === idx.U) {
+            layer.io.input.ready := true.B
+            if (idx == 0) {
+              layer.io.input.bits := io.sample
+            } else {
+              layer.io.input.bits := layersWithOutputRegs(idx - 1)._2
+            }
+          }
+          when(layer.io.output.valid) {
+            outputReg := layer.io.output.bits
+            when(curLayer.inc()) {
+              io.result.valid := true.B
+              io.result.bits := layer.io.output.bits
+              when(sampleIndex === numSamples - 1.U) {
+                state := ready
+              } .otherwise {
+                sampleIndex := sampleIndex + 1.U
+              }
+            }
+          }
+      }
     }
   }
 
