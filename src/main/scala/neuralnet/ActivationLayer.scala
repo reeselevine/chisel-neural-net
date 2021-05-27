@@ -13,6 +13,7 @@ class ActivationLayerIO(params: ActivationLayerParams) extends Bundle {
   val nextState = Flipped(Decoupled(NeuronState()))
 }
 
+/** Implements an activation layer, for creating non-linear neural nets */
 class ActivationLayer(params: ActivationLayerParams) extends Module {
 
   val io = IO(new ActivationLayerIO(params))
@@ -29,6 +30,7 @@ class ActivationLayer(params: ActivationLayerParams) extends Module {
         state := io.nextState.bits
       }
     }
+    // By default this uses Relu activation. We may want to parameterize this later.
     is(NeuronState.forwardProp) {
       when(io.input.fire()) {
         val inputData = io.input.bits

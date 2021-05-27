@@ -7,8 +7,6 @@ import neuralnet.NeuralNet._
 
 //todo: parameterize some of these things
 object NeuralNet {
-  val InputSize = 2
-  val OutputSize = 1
   val DataWidth = 32.W
   val DataBinaryPoint = 16.BP
   val LearningEpochs = 100
@@ -19,43 +17,55 @@ object NeuralNet {
   object NeuronState extends ChiselEnum {
     val ready, reset, forwardProp, backwardProp = Value
   }
+
+  sealed trait Layer
+  case class FCLayer(params: FullyConnectedLayerParams) extends Layer
+  case class ALayer(params: ActivationLayerParams) extends Layer
 }
+
+case class NeuralNetParams(inputSize: Int, outputSize: Int, layers: Seq[Layer])
 
 /**
  * IO for the neural net. The sample is used as input both for training and predicting, while the validation
  * is only used for training. Result is only valid during predicting.
  */
-class NeuralNetIO extends Bundle {
+class NeuralNetIO(params: NeuralNetParams) extends Bundle {
   val train = Input(Bool())
   val predict = Input(Bool())
-  val sample = Input(Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  val validation = Input(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val sample = Input(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val validation = Input(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
   val numSamples = Flipped(Decoupled(UInt(32.W)))
-  val result = Decoupled(Vec(OutputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val result = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
 }
 
-class NeuralNet extends Module {
+class NeuralNet(params: NeuralNetParams) extends Module {
 
   val ready :: writingTrainingData :: training :: predicting :: Nil = Enum(3)
 
-  /** Need to figure out best way to build a modular net. But to start, we can manually define which layers
-   * are being used and connect them as part of this module.
-   */
+  val io = IO(new NeuralNetIO(params))
 
-  val io = IO(new NeuralNetIO)
+  // Way to define a set of layers with registers to hold the output from each layer. Output from one layer is used
+  // as input to next layer. Goal is to get this working, then think about optimization.
+  val layersWithOutputRegs = params.layers.map {
+    case FCLayer(params) =>
+      (Module(new FullyConnectedLayer(params)), RegInit(VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
+    case ALayer(params) =>
+      (Module(new ActivationLayer(params)), RegInit(VecInit(Seq.fill(params.size)(0.F(DataWidth, DataBinaryPoint)))))
+  }
 
   /** Memory used to store the training data, so it can be run over multiple epochs easily. */
-  val trainingSamples = Mem(MaxTrainingSamples, Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  val validationSet = Mem(MaxTrainingSamples, Vec(InputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val trainingSamples = Mem(MaxTrainingSamples, Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val validationSet = Mem(MaxTrainingSamples, Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
 
   val curEpoch = Counter(LearningEpochs)
   val numSamples = RegInit(0.U(32.W))
   val sampleIndex = RegInit(0.U(32.W))
   val state = RegInit(ready)
+  val curLayer = Counter(layersWithOutputRegs.length)
 
   io.numSamples.ready := true.B
   io.result.valid := false.B
-  io.result.bits := VecInit(Seq.fill(OutputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.result.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   switch(state) {
     // initial state, input decides whether to go to train or predict
