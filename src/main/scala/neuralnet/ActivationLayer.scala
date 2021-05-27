@@ -23,4 +23,25 @@ class ActivationLayer(params: ActivationLayerParams) extends Module {
   io.output.valid := false.B
   io.output.bits := VecInit(Seq.fill(params.size)(0.F(DataWidth, DataBinaryPoint)))
 
+  switch(state) {
+    is(NeuronState.ready) {
+      when(io.nextState.fire()) {
+        state := io.nextState.bits
+      }
+    }
+    is(NeuronState.forwardProp) {
+      when(io.input.fire()) {
+        val inputData = io.input.bits
+        (0 until params.size).foreach { i =>
+          when(inputData(i) > 0.F(DataWidth, DataBinaryPoint)) {
+            io.output.bits(i) := inputData(i)
+          } .otherwise {
+            io.output.bits(i) := 0.F(DataWidth, DataBinaryPoint)
+          }
+        }
+        io.output.valid := true.B
+        state := NeuronState.ready
+      }
+    }
+  }
 }

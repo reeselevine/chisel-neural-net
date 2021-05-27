@@ -59,6 +59,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
           io.output.bits(j) := dotProduct + bias(j)
         }
         io.output.valid := true.B
+        //state := NeuronState.ready
       }
     }
   }
