@@ -10,8 +10,15 @@ import scala.util.Random
 case class FullyConnectedLayerParams(inputSize: Int, outputSize: Int, adjust: Double)
 
 class FullyConnectedLayerIO(params: FullyConnectedLayerParams) extends Bundle {
+  // Input from left layer.
   val input = Flipped(Decoupled(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint))))
+  // Error passed in by the right layer (this layer's current output).
+  val output_error = Flipped(Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint))))
+  // Error passed to the left layer (this current layer's input).
+  val input_error = Decoupled(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  // Output to right layer.
   val output = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  // Next state command from NeuralNet.
   val nextState = Flipped(Decoupled(NeuronState()))
 }
 
@@ -23,16 +30,18 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
   val r = Random
   val io = IO(new FullyConnectedLayerIO(params))
   val state = RegInit(NeuronState.ready)
-  val weightsValues = getInitialWeights()
-  val weights = RegInit(weightsValues)
-  val biasValues = getInitialBias()
-  val bias = RegInit(biasValues)
+  val weights = RegInit(getInitialWeights()) // Input weights.
+  val bias = RegInit(getInitialBias())       // Neuron biases.
 
   io.input.ready := true.B
   io.nextState.ready := true.B
   io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   io.output.valid := false.B
+
+  io.output_error.ready := true.B
+  io.input_error.valid := false.B
+  io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   switch(state) {
     // Intermediate state, used to transition between initialization, training, and predicting.
@@ -56,10 +65,59 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Module {
           val dotProduct = (0 until params.inputSize).foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, i) =>
             sum + inputData(i) * weights(i)(j)
           }
-          io.output.bits(j) := dotProduct + bias(j)
+          
+          // ReLu activation. 
+          val net = dotProduct + bias(j)
+          when (net > 0.F(DataWidth, DataBinaryPoint)) {
+            io.output.bits(j) := net
+          } .otherwise {
+            io.output.bits(j) := 0.F(DataWidth, DataBinaryPoint)
+          }
         }
         io.output.valid := true.B
-        //state := NeuronState.ready
+
+        // Wait for next state change.
+        state := NeuronState.ready
+      }
+    }
+    // Perform back propagation.
+    // https://machinelearningmastery.com/implement-backpropagation-algorithm-scratch-python/
+    is(NeuronState.backwardProp) {
+      when (io.output_error.fire()) {
+        // Compute own deltas (gradient).
+        val deltas = (0 until params.outputSize).map { j =>
+          // ReLu derivative.
+          // TODO: necessary use of var?
+          var deriv = 0.F(DataWidth, DataBinaryPoint);
+          when (io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint)) {
+            deriv = 1.F(DataWidth, DataBinaryPoint)
+          }
+
+          io.output_error(j) * deriv;
+        }
+      
+        // Update weights and biases.
+        for (j <- 0 until params.outputSize) {
+          for (i <- 0 until params.inputSize) {
+            weights(i)(j) := weights(i)(j) + LearningRate * deltas(j) * io.input(i)
+          }
+
+          bias(j) := bias(j) + LearningRate * deltas(j)
+        }
+
+        // Compute error to pass to left layer.
+        for (i <- 0 until params.inputSize) {
+          val dotPdt = (0 until params.outputSize)
+            .foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, j) =>
+              sum + weights(i)(j) * delta(j)
+          }
+
+          io.input_error.bits(i) := dotPdt
+        }
+        io.input_error.valid := true.B
+
+        // Wait for next state change.
+        state := NeuronState.ready
       }
     }
   }
