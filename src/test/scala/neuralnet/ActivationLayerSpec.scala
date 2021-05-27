@@ -16,7 +16,7 @@ class ActivationLayerSpec extends FreeSpec with ChiselScalatestTester {
       dut.clock.step(1)
       dut.io.input.valid.poke(true.B)
       dut.io.input.ready.expect(true.B)
-      dut.io.input.bits.zipWithIndex.map {
+      dut.io.input.bits.zipWithIndex.foreach {
         case (bit, i) => bit.poke(defaultInput(i).F(DataWidth, DataBinaryPoint))
       }
       dut.io.output.valid.expect(true.B)

@@ -10,9 +10,21 @@ import neuralnet.NeuralNetSpec.buildBasicNet
 
 class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
 
-  "A neural net should initialize" in {
+  "A neural net should initialize and predict multiple samples" in {
     test(buildBasicNet()) { dut =>
       dut.io.numSamples.ready.expect(true.B)
+      dut.io.numSamples.valid.poke(true.B)
+      dut.io.numSamples.bits.poke(2.U)
+      dut.io.sample.foreach(bit => bit.poke(1.F(DataWidth, DataBinaryPoint)))
+      dut.io.predict.poke(true.B)
+      dut.clock.step(1)
+      dut.io.result.ready.poke(true.B)
+      dut.clock.step(1)
+      dut.io.result.valid.expect(true.B)
+      dut.clock.step(1)
+      dut.io.result.valid.expect(false.B)
+      dut.clock.step(1)
+      dut.io.result.valid.expect(true.B)
     }
   }
 }
