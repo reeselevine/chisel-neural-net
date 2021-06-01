@@ -108,8 +108,6 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         io.input_error.valid := true.B
 
         // Wait for next state change.
-=======
->>>>>>> Layer refactor
         state := NeuronState.ready
       }
     }
