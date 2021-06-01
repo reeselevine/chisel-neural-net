@@ -11,6 +11,12 @@ class FullyConnectedLayerSpec extends FreeSpec with ChiselScalatestTester {
 
   "FCLayer should calculate output values" in {
     test(new TestFullyConnectedLayer(inputWeightValue = 2, inputBiasValue = 0.5)) { dut =>
+      // Initialization.
+      dut.io.output_error.bits.foreach(bit => bit.poke(0.5.F(DataWidth, DataBinaryPoint)))
+      dut.io.output_error.valid.poke(false.B)
+      dut.io.input_error.ready.poke(true.B)
+
+      // Check forward propagation.
       dut.io.nextState.valid.poke(true.B)
       dut.io.nextState.ready.expect(true.B)
       dut.io.nextState.bits.poke(NeuronState.forwardProp)
@@ -20,6 +26,8 @@ class FullyConnectedLayerSpec extends FreeSpec with ChiselScalatestTester {
       dut.io.input.bits.foreach(bit => bit.poke(1.F(DataWidth, DataBinaryPoint)))
       dut.io.output.valid.expect(true.B)
       dut.io.output.bits.foreach(bit => bit.expect(4.5.F(DataWidth, DataBinaryPoint)))
+
+      // Check backward propagation.
     }
   }
 }
