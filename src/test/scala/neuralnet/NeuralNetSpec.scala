@@ -32,7 +32,11 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
 object NeuralNetSpec {
 
   def buildBasicNet(): NeuralNet = {
-    val params = NeuralNetParams(inputSize = 2, outputSize = 1, layers = Seq(FCLayer(fcLayerDefaultParams)))
-    new NeuralNet(params)
+    val params = NeuralNetParams(
+      inputSize = 2,
+      outputSize = 1,
+      trainingEpochs = 1,
+      layers = Seq(FCLayer(fcLayerDefaultParams)))
+    new NeuralNet(params, new LayerFactory)
   }
 }

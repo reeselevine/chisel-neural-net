@@ -13,6 +13,9 @@ class ActivationLayer(params: LayerParams) extends Layer(params) {
   io.nextState.ready := true.B
   io.output.valid := false.B
   io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.output_error.ready := true.B
+  io.input_error.valid := false.B
+  io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
 
   switch(state) {
     is(NeuronState.ready) {

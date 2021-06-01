@@ -71,7 +71,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         state := NeuronState.ready
       }
     }
-    // Perform back propagation.
+/*    // Perform back propagation.
     // https://machinelearningmastery.com/implement-backpropagation-algorithm-scratch-python/
     is(NeuronState.backwardProp) {
       when (io.output_error.fire()) {
@@ -110,7 +110,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         // Wait for next state change.
         state := NeuronState.ready
       }
-    }
+    }*/
   }
 
   def getInitialWeights(): Vec[Vec[FixedPoint]] = {
