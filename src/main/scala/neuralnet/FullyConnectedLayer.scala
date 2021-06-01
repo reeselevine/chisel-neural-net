@@ -80,13 +80,10 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         // Compute own deltas (gradient).
         val deltas = (0 until params.outputSize).map { j =>
           // ReLu derivative.
-          // TODO: necessary use of var?
-          var deriv = 0.F(DataWidth, DataBinaryPoint);
-          when (io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint)) {
-            deriv = 1.F(DataWidth, DataBinaryPoint)
-          }
+          val derivative = Mux(io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint),
+            1.F(DataWidth, DataBinaryPoint), 0.F(DataWidth, DataBinaryPoint))
 
-          io.output_error.bits(j) * deriv;
+          io.output_error.bits(j) * derivative;
         }
 
         // Learning rate as a chisel var.
