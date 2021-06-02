@@ -25,6 +25,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
   val weights = RegInit(initialWeights) // Input weights.
   val bias = RegInit(initialBias)       // Neuron biases.
 
+  // Init defaults.
   io.input.ready := true.B
   io.nextState.ready := true.B
   io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
@@ -32,8 +33,8 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
   io.output.valid := false.B
 
   io.output_error.ready := true.B
-  io.input_error.valid := false.B
   io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.input_error.valid := false.B
 
   switch(state) {
     // Intermediate state, used to transition between initialization, training, and predicting.
@@ -80,29 +81,29 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         // Compute own deltas (gradient).
         val deltas = (0 until params.outputSize).map { j =>
           // ReLu derivative.
-          // TODO: necessary use of var?
-          var deriv = 0.F(DataWidth, DataBinaryPoint);
-          when (io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint)) {
-            deriv = 1.F(DataWidth, DataBinaryPoint)
-          }
+          val derivative = Mux(io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint),
+            1.F(DataWidth, DataBinaryPoint), 0.F(DataWidth, DataBinaryPoint))
 
-          io.output_error(j) * deriv;
+          io.output_error.bits(j) * derivative;
         }
+
+        // Learning rate as a chisel var.
+        val learningRateChisel = LearningRate.F(DataWidth, DataBinaryPoint)
 
         // Update weights and biases.
         for (j <- 0 until params.outputSize) {
           for (i <- 0 until params.inputSize) {
-            weights(i)(j) := weights(i)(j) + LearningRate * deltas(j) * io.input(i)
+            weights(i)(j) := weights(i)(j) + learningRateChisel * deltas(j) * io.input.bits(i)
           }
 
-          bias(j) := bias(j) + LearningRate * deltas(j)
+          bias(j) := bias(j) + learningRateChisel * deltas(j)
         }
 
         // Compute error to pass to left layer.
         for (i <- 0 until params.inputSize) {
           val dotPdt = (0 until params.outputSize)
             .foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, j) =>
-              sum + weights(i)(j) * delta(j)
+              sum + weights(i)(j) * deltas(j)
           }
 
           io.input_error.bits(i) := dotPdt
