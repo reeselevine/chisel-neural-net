@@ -67,8 +67,10 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
           }
         }
         io.output.valid := true.B
-        // Wait for next state change.
-        state := NeuronState.ready
+      }
+      // Wait for next state change.
+      when(io.nextState.fire()) {
+        state := io.nextState.bits
       }
     }
 /*    // Perform back propagation.
@@ -106,9 +108,10 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
           io.input_error.bits(i) := dotPdt
         }
         io.input_error.valid := true.B
-
-        // Wait for next state change.
-        state := NeuronState.ready
+      }
+      // Wait for next state change.
+      when(io.nextState.fire()) {
+        state := io.nextState.bits
       }
     }*/
   }

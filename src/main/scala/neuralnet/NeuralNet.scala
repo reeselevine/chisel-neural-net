@@ -17,6 +17,8 @@ object NeuralNet {
     val ready, reset, forwardProp, backwardProp = Value
   }
 
+  val ready :: writingTrainingData :: trainingForwardProp :: trainingBackwardProp :: predicting :: Nil = Enum(5)
+
   sealed trait LayerType {
     def params: LayerParams
   }
@@ -41,13 +43,15 @@ class NeuralNetIO(params: NeuralNetParams) extends Bundle {
   val validation = Input(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
   val numSamples = Flipped(Decoupled(UInt(32.W)))
   val result = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  // for testing purposes
+  val state = Output(UInt(log2Ceil(5).W))
+  val epoch = Output(UInt(log2Ceil(params.trainingEpochs).W))
+  val layer = Output(UInt(log2Ceil(params.layers.size).W))
 }
 
 class NeuralNet(
                  params: NeuralNetParams,
                  layerFactory: LayerFactory) extends Module {
-
-  val ready :: writingTrainingData :: trainingForwardProp :: trainingBackwardProp :: predicting :: Nil = Enum(5)
 
   val io = IO(new NeuralNetIO(params))
 
@@ -55,7 +59,7 @@ class NeuralNet(
   // as input to next layer for forward propagation. Goal is to get this working, then think about optimization.
   val layersWithOutputRegs = params.layers.map { layer =>
     val initializedLayer = layerFactory(layer)
-    initializedLayer.io.nextState.valid := false.B
+    initializedLayer.io.nextState.valid := true.B
     initializedLayer.io.nextState.bits := NeuronState.ready
     initializedLayer.io.input.valid := false.B
     initializedLayer.io.input.bits := VecInit(Seq.fill(layer.params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
@@ -81,6 +85,9 @@ class NeuralNet(
   io.numSamples.ready := true.B
   io.result.valid := false.B
   io.result.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.state := state
+  io.epoch := curEpoch.value
+  io.layer := curLayer.value
 
   switch(state) {
     // initial state, input decides whether to go to train or predict
@@ -89,6 +96,7 @@ class NeuralNet(
         state := writingTrainingData
         numSamples := io.numSamples.bits
         sampleIndex := 0.U
+        curLayer.reset()
       } .elsewhen(io.predict && io.numSamples.fire) {
         state := predicting
         numSamples := io.numSamples.bits
@@ -110,9 +118,8 @@ class NeuralNet(
     is(trainingForwardProp) {
       layersWithOutputRegs.zipWithIndex.foreach {
         case ((layer, outputReg), idx) =>
-          when(curLayer.value === idx.U) {
+          when(curLayer.value === idx.U && layer.io.nextState.ready && layer.io.input.ready) {
             layer.io.output.ready := true.B
-            layer.io.nextState.valid := true.B
             layer.io.nextState.bits := NeuronState.forwardProp
             layer.io.input.valid := true.B
             if (idx == 0) {
@@ -122,7 +129,6 @@ class NeuralNet(
             }
           }
           when(layer.io.output.valid) {
-            layer.io.nextState.valid := false.B
             outputReg := layer.io.output.bits
             when(curLayer.inc()) {
               state := trainingBackwardProp
@@ -137,21 +143,28 @@ class NeuralNet(
     is(trainingBackwardProp) {
       layersWithOutputRegs.zipWithIndex.reverse.foreach {
         case ((layer, outputReg), idx) =>
-          when(curLayer.value === idx.U) {
+          when(curLayer.value === idx.U && layer.io.nextState.ready && layer.io.output_error.ready) {
             layer.io.input_error.ready := true.B
-            layer.io.nextState.valid := true.B
             layer.io.nextState.bits := NeuronState.backwardProp
             layer.io.output_error.valid := true.B
             layer.io.output_error.bits := outputReg
-            when(sampleIndex === numSamples - 1.U) {
-              when(curEpoch.inc()) {
-                state := ready
+          }
+          when(layer.io.input_error.valid) {
+            if (idx > 0) {
+              layersWithOutputRegs(idx - 1)._2 := layer.io.input_error.bits
+            }
+            when(curLayer.inc()) {
+              when(sampleIndex === (numSamples - 1.U)) {
+                sampleIndex := 0.U
+                when(curEpoch.inc()) {
+                  state := ready
+                } .otherwise {
+                  state := trainingForwardProp
+                }
               } .otherwise {
+                sampleIndex := sampleIndex + 1.U
                 state := trainingForwardProp
               }
-            } .otherwise {
-              sampleIndex := sampleIndex + 1.U
-              state := trainingForwardProp
             }
           }
       }
