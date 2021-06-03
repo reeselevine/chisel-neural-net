@@ -59,7 +59,7 @@ class NeuralNet(
   // as input to next layer for forward propagation. Goal is to get this working, then think about optimization.
   val layersWithOutputRegs = params.layers.map { layer =>
     val initializedLayer = layerFactory(layer)
-    initializedLayer.io.nextState.valid := true.B
+    initializedLayer.io.nextState.valid := false.B
     initializedLayer.io.nextState.bits := NeuronState.ready
     initializedLayer.io.input.valid := false.B
     initializedLayer.io.input.bits := VecInit(Seq.fill(layer.params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
@@ -67,7 +67,7 @@ class NeuralNet(
     initializedLayer.io.input_error.ready := true.B
     initializedLayer.io.output_error.valid := false.B
     initializedLayer.io.output_error.bits := VecInit(Seq.fill(layer.params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
-    (initializedLayer, RegInit(VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
+    (initializedLayer, RegInit(VecInit(Seq.fill(layer.params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
   }
 
   val lastOutput = layersWithOutputRegs.last._2
@@ -120,6 +120,7 @@ class NeuralNet(
         case ((layer, outputReg), idx) =>
           when(curLayer.value === idx.U && layer.io.nextState.ready && layer.io.input.ready) {
             layer.io.output.ready := true.B
+            layer.io.nextState.valid := true.B
             layer.io.nextState.bits := NeuronState.forwardProp
             layer.io.input.valid := true.B
             if (idx == 0) {
@@ -130,7 +131,8 @@ class NeuralNet(
           }
           when(layer.io.output.valid) {
             outputReg := layer.io.output.bits
-            when(curLayer.inc()) {
+            curLayer.inc()
+            if (idx == layersWithOutputRegs.length - 1) {
               state := trainingBackwardProp
               // loss function derivative, use mean squared error
               lastOutput := VecInit(Seq.tabulate(params.outputSize){ i =>
@@ -145,6 +147,7 @@ class NeuralNet(
         case ((layer, outputReg), idx) =>
           when(curLayer.value === idx.U && layer.io.nextState.ready && layer.io.output_error.ready) {
             layer.io.input_error.ready := true.B
+            layer.io.nextState.valid := true.B
             layer.io.nextState.bits := NeuronState.backwardProp
             layer.io.output_error.valid := true.B
             layer.io.output_error.bits := outputReg
@@ -153,7 +156,8 @@ class NeuralNet(
             if (idx > 0) {
               layersWithOutputRegs(idx - 1)._2 := layer.io.input_error.bits
             }
-            when(curLayer.inc()) {
+            curLayer.inc()
+            if (idx == layersWithOutputRegs.length - 1) {
               when(sampleIndex === (numSamples - 1.U)) {
                 sampleIndex := 0.U
                 when(curEpoch.inc()) {
@@ -186,7 +190,8 @@ class NeuralNet(
           when(layer.io.output.valid) {
             layer.io.nextState.valid := false.B
             outputReg := layer.io.output.bits
-            when(curLayer.inc()) {
+            curLayer.inc()
+            if (idx == layersWithOutputRegs.length - 1) {
               io.result.valid := true.B
               io.result.bits := layer.io.output.bits
               when(sampleIndex === numSamples - 1.U) {
