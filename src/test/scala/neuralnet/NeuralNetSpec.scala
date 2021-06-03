@@ -1,5 +1,6 @@
 package neuralnet
 
+import scala.io.Source
 import chisel3._
 import chisel3.tester._
 import org.scalatest.FreeSpec
@@ -111,6 +112,66 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
     }
   }
 
+  "A neural net should train on MNIST data set" in {
+    val trainingCSVSource = Source.fromFile("datasets/MNIST/mnist_train.csv")
+    val lines = trainingCSVSource.getLines(); lines.next() // Skip header.
+    val trainingSamples = 5
+    
+    val fcLayer1 = FullyConnectedLayerParams(784, 32, 0.5)
+    val fcLayer2 = FullyConnectedLayerParams(32, 10, 0.5)
+    val params = NeuralNetParams(784, 10, 2, Seq(FCLayer(fcLayer1), FCLayer(fcLayer2)))
+
+    test(buildBasicNet(params = params)) { dut =>
+      dut.io.numSamples.valid.poke(true.B)
+      dut.io.numSamples.bits.poke(4.U)
+      dut.io.train.poke(true.B)
+      dut.io.state.expect(ready)
+      dut.clock.step(1)
+      dut.io.train.poke(false.B)
+      dut.io.numSamples.valid.poke(false.B)
+      for (i <- 0 until trainingSamples) {
+        val row = lines.next().split(",").map(_.trim)
+
+        val input = row.slice(1, row.length).map(_.toDouble)
+        val expected = oneHot(row(0).toInt)
+
+        writeTrainingData(input, expected, dut)
+        dut.io.state.expect(writingTrainingData)
+        dut.clock.step(1)
+      }
+      dut.io.state.expect(trainingForwardProp)
+      dut.io.layer.expect(0.U)
+      dut.clock.step(4)
+      dut.io.state.expect(trainingBackwardProp)
+      dut.clock.step(4)
+      dut.io.state.expect(trainingForwardProp)
+      //dut.clock.step(8*(trainingSamples - 1)) //do the rest of the training
+      dut.clock.step(8*7) //do the rest of the training
+
+      ////Back to ready state, let's try predicting some values
+      //dut.io.state.expect(ready)
+      //dut.io.numSamples.valid.poke(true.B)
+      //dut.io.numSamples.bits.poke(2.U)
+      //dut.io.predict.poke(true.B)
+      //dut.clock.step(1)
+      //dut.io.state.expect(predicting)
+      //predictionData(0).indices.foreach { j =>
+        //dut.io.sample(j).poke(predictionData(0)(j).F(DataWidth, DataBinaryPoint))
+      //}
+      //dut.io.result.ready.poke(true.B)
+      //dut.clock.step(3)
+      //dut.io.result.valid.expect(true.B)
+      //dut.clock.step(1)
+      //predictionData(1).indices.foreach { j =>
+        //dut.io.sample(j).poke(predictionData(1)(j).F(DataWidth, DataBinaryPoint))
+      //}
+      //dut.clock.step(1)
+      //dut.io.result.valid.expect(true.B)
+      //dut.clock.step(1)
+      //dut.io.state.expect(ready)
+    }
+  }
+
   def writeTrainingData(train: Seq[Double], validate: Seq[Double], dut: NeuralNet) = {
     train.indices.foreach { i =>
       dut.io.sample(i).poke(train(i).F(DataWidth, DataBinaryPoint))
@@ -119,6 +180,8 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
       dut.io.validation(i).poke(validate(i).F(DataWidth, DataBinaryPoint))
     }
   }
+
+  def oneHot(x: Int): Seq[Double] = (0 to 9).map(i => if (i == x) 1.0 else 0.0)
 }
 
 object NeuralNetSpec {
