@@ -7,12 +7,6 @@ import neuralnet.NeuralNet._
 
 //todo: parameterize some of these things
 object NeuralNet {
-  val DataWidth = 32.W
-  val DataBinaryPoint = 16.BP
-  val LearningRate = 0.1
-  val MaxTrainingSamples = 1000
-  val MaxPredictSamples = 10
-
   object NeuronState extends ChiselEnum {
     val ready, reset, forwardProp, backwardProp = Value
   }
@@ -30,6 +24,9 @@ case class NeuralNetParams(
                             inputSize: Int,
                             outputSize: Int,
                             trainingEpochs: Int,
+                            maxTrainingSamples: Int,
+                            dataWidth: Int,
+                            dataBinaryPoint: Int,
                             layers: Seq[LayerType])
 
 /**
@@ -39,10 +36,10 @@ case class NeuralNetParams(
 class NeuralNetIO(params: NeuralNetParams) extends Bundle {
   val train = Input(Bool())
   val predict = Input(Bool())
-  val sample = Input(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  val validation = Input(Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val sample = Input(Vec(params.inputSize, FixedPoint(params.dataWidth.W, params.dataBinaryPoint.BP)))
+  val validation = Input(Vec(params.inputSize, FixedPoint(params.dataWidth.W, params.dataBinaryPoint.BP)))
   val numSamples = Flipped(Decoupled(UInt(32.W)))
-  val result = Decoupled(Vec(params.outputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val result = Decoupled(Vec(params.outputSize, FixedPoint(params.dataWidth.W, params.dataBinaryPoint.BP)))
   // for testing purposes
   val state = Output(UInt(log2Ceil(5).W))
   val epoch = Output(UInt(log2Ceil(params.trainingEpochs).W))
@@ -58,23 +55,23 @@ class NeuralNet(
   // Way to define a set of layers with registers to hold the output from each layer. Output from one layer is used
   // as input to next layer for forward propagation. Goal is to get this working, then think about optimization.
   val layersWithOutputRegs = params.layers.map { layer =>
-    val initializedLayer = layerFactory(layer)
+    val initializedLayer = layerFactory(params, layer)
     initializedLayer.io.nextState.valid := false.B
     initializedLayer.io.nextState.bits := NeuronState.ready
     initializedLayer.io.input.valid := false.B
-    initializedLayer.io.input.bits := VecInit(Seq.fill(layer.params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
+    initializedLayer.io.input.bits := VecInit(Seq.fill(layer.params.inputSize)(0.F(params.dataWidth.W, params.dataBinaryPoint.BP)))
     initializedLayer.io.output.ready := false.B
     initializedLayer.io.input_error.ready := true.B
     initializedLayer.io.output_error.valid := false.B
-    initializedLayer.io.output_error.bits := VecInit(Seq.fill(layer.params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
-    (initializedLayer, RegInit(VecInit(Seq.fill(layer.params.outputSize)(0.F(DataWidth, DataBinaryPoint)))))
+    initializedLayer.io.output_error.bits := VecInit(Seq.fill(layer.params.outputSize)(0.F(params.dataWidth.W, params.dataBinaryPoint.BP)))
+    (initializedLayer, RegInit(VecInit(Seq.fill(layer.params.outputSize)(0.F(params.dataWidth.W, params.dataBinaryPoint.BP)))))
   }
 
   val lastOutput = layersWithOutputRegs.last._2
 
   /** Memory used to store the training data, so it can be run over multiple epochs easily. */
-  val trainingSamples = Mem(MaxTrainingSamples, Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
-  val validationSet = Mem(MaxTrainingSamples, Vec(params.inputSize, FixedPoint(DataWidth, DataBinaryPoint)))
+  val trainingSamples = Mem(params.maxTrainingSamples, Vec(params.inputSize, FixedPoint(params.dataWidth.W, params.dataBinaryPoint.BP)))
+  val validationSet = Mem(params.maxTrainingSamples, Vec(params.inputSize, FixedPoint(params.dataWidth.W, params.dataBinaryPoint.BP)))
 
   val curEpoch = Counter(params.trainingEpochs)
   val numSamples = RegInit(0.U(32.W))
@@ -84,7 +81,7 @@ class NeuralNet(
 
   io.numSamples.ready := true.B
   io.result.valid := false.B
-  io.result.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.result.bits := VecInit(Seq.fill(params.outputSize)(0.F(params.dataWidth.W, params.dataBinaryPoint.BP)))
   io.state := state
   io.epoch := curEpoch.value
   io.layer := curLayer.value
@@ -136,7 +133,7 @@ class NeuralNet(
               state := trainingBackwardProp
               // loss function derivative, use mean squared error
               lastOutput := VecInit(Seq.tabulate(params.outputSize){ i =>
-                (validationSet(sampleIndex)(i.U) - lastOutput(i.U)) * (2/params.outputSize).F(DataWidth, DataBinaryPoint)
+                (validationSet(sampleIndex)(i.U) - lastOutput(i.U)) * (2/params.outputSize).F(params.dataWidth.W, params.dataBinaryPoint.BP)
               })
             }
           }

@@ -3,20 +3,27 @@ package neuralnet
 import chisel3._
 import chisel3.experimental.FixedPoint
 import chisel3.util._
+import neuralnet.FullyConnectedLayer.AdjustAmount
 import neuralnet.NeuralNet._
+
 import scala.util.Random
+
+object FullyConnectedLayer {
+  /** We need a normal distribution for the initial weights, but random returns values between 0 and 1. */
+  val AdjustAmount = 0.5
+}
 
 case class FullyConnectedLayerParams(
                                       override val inputSize: Int,
                                       override val outputSize: Int,
-                                      adjust: Double)
+                                      learningRate: Double)
   extends LayerParams(inputSize, outputSize)
 
 /**
  * Implements a fully connected layer in a neural net, where each input neuron affects each output neuron
  * with weights defined in a stored matrix.
  */
-class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(params) {
+class FullyConnectedLayer(netParams: NeuralNetParams, params: FullyConnectedLayerParams) extends Layer(netParams, params) {
 
   val r = Random
   val state = RegInit(NeuronState.ready)
@@ -28,12 +35,12 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
   // Init defaults.
   io.input.ready := true.B
   io.nextState.ready := true.B
-  io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)))
 
   io.output.valid := false.B
 
   io.output_error.ready := true.B
-  io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
+  io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)))
   io.input_error.valid := false.B
 
   switch(state) {
@@ -55,16 +62,16 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         val inputData = io.input.bits
         // computes the dot product for each output neuron using the input neurons and their defined weights.
         (0 until params.outputSize).foreach { j =>
-          val dotProduct = (0 until params.inputSize).foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, i) =>
+          val dotProduct = (0 until params.inputSize).foldLeft(0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)) { (sum, i) =>
             sum + inputData(i) * weights(i)(j)
           }
           
           // ReLu activation. 
           val net = dotProduct + bias(j)
-          when (net > 0.F(DataWidth, DataBinaryPoint)) {
+          when (net > 0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)) {
             io.output.bits(j) := net
           } .otherwise {
-            io.output.bits(j) := 0.F(DataWidth, DataBinaryPoint)
+            io.output.bits(j) := 0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)
           }
         }
         io.output.valid := true.B
@@ -81,14 +88,14 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         // Compute own deltas (gradient).
         val deltas = (0 until params.outputSize).map { j =>
           // ReLu derivative.
-          val derivative = Mux(io.output.bits(j) > 0.F(DataWidth, DataBinaryPoint),
-            1.F(DataWidth, DataBinaryPoint), 0.F(DataWidth, DataBinaryPoint))
+          val derivative = Mux(io.output.bits(j) > 0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP),
+            1.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP), 0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP))
 
           io.output_error.bits(j) * derivative;
         }
 
         // Learning rate as a chisel var.
-        val learningRateChisel = LearningRate.F(DataWidth, DataBinaryPoint)
+        val learningRateChisel = params.learningRate.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)
 
         // Update weights and biases.
         for (j <- 0 until params.outputSize) {
@@ -102,7 +109,7 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
         // Compute error to pass to left layer.
         for (i <- 0 until params.inputSize) {
           val dotPdt = (0 until params.outputSize)
-            .foldLeft(0.F(DataWidth, DataBinaryPoint)) { (sum, j) =>
+            .foldLeft(0.F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)) { (sum, j) =>
               sum + weights(i)(j) * deltas(j)
           }
 
@@ -119,11 +126,11 @@ class FullyConnectedLayer(params: FullyConnectedLayerParams) extends Layer(param
 
   def getInitialWeights(): Vec[Vec[FixedPoint]] = {
     VecInit(Seq.fill(params.inputSize)(VecInit(Seq.tabulate(params.outputSize)(_ =>
-      (r.nextDouble() - params.adjust).F(DataWidth, DataBinaryPoint)))))
+      (r.nextDouble() - AdjustAmount).F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)))))
   }
 
   def getInitialBias(): Vec[FixedPoint] = {
     VecInit(Seq.tabulate(params.outputSize)(_ =>
-      (r.nextDouble() - params.adjust).F(DataWidth, DataBinaryPoint)))
+      (r.nextDouble() - AdjustAmount).F(netParams.dataWidth.W, netParams.dataBinaryPoint.BP)))
   }
 }

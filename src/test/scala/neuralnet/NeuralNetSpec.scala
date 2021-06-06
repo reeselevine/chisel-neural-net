@@ -17,7 +17,7 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
       dut.io.state.expect(ready)
       dut.io.numSamples.valid.poke(true.B)
       dut.io.numSamples.bits.poke(2.U)
-      dut.io.sample.foreach(bit => bit.poke(1.F(DataWidth, DataBinaryPoint)))
+      dut.io.sample.foreach(bit => bit.poke(1.F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP)))
       dut.io.predict.poke(true.B)
       dut.clock.step(1)
       dut.io.state.expect(predicting)
@@ -37,8 +37,8 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
     test(buildBasicNet(layerFactory = new TestLayerFactory)) { dut =>
       dut.io.numSamples.valid.poke(true.B)
       dut.io.numSamples.bits.poke(2.U)
-      dut.io.sample.foreach(bit => bit.poke(1.F(DataWidth, DataBinaryPoint)))
-      dut.io.validation.foreach(bit => bit.poke(1.F(DataWidth, DataBinaryPoint)))
+      dut.io.sample.foreach(bit => bit.poke(1.F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP)))
+      dut.io.validation.foreach(bit => bit.poke(1.F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP)))
       dut.io.train.poke(true.B)
       dut.clock.step(1)
       dut.io.train.poke(false.B)
@@ -64,8 +64,8 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
     val trainingData = Seq(Seq(0.0, 0.0), Seq(0.0, 1.0), Seq(1.0, 0.0), Seq(1.0, 1.0))
     val validationData = Seq(Seq(0.0), Seq(1.0), Seq(1.0), Seq(0.0))
     val predictionData = Seq(Seq(1.0, 1.0), Seq(1.0, 0.0))
-    val fcLayer1 = FullyConnectedLayerParams(2, 3, 0.5)
-    val fcLayer2 = FullyConnectedLayerParams(3, 1, 0.5)
+    val fcLayer1 = FullyConnectedLayerParams(2, 3, TestLearningRate)
+    val fcLayer2 = FullyConnectedLayerParams(3, 1, TestLearningRate)
     val params = defaultNeuralNetParams.copy(layers = Seq(FCLayer(fcLayer1), FCLayer(fcLayer2)))
     test(buildBasicNet(params = params)) { dut =>
       dut.io.numSamples.valid.poke(true.B)
@@ -96,14 +96,14 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
       dut.clock.step(1)
       dut.io.state.expect(predicting)
       predictionData(0).indices.foreach { j =>
-        dut.io.sample(j).poke(predictionData(0)(j).F(DataWidth, DataBinaryPoint))
+        dut.io.sample(j).poke(predictionData(0)(j).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
       }
       dut.io.result.ready.poke(true.B)
       dut.clock.step(3)
       dut.io.result.valid.expect(true.B)
       dut.clock.step(1)
       predictionData(1).indices.foreach { j =>
-        dut.io.sample(j).poke(predictionData(1)(j).F(DataWidth, DataBinaryPoint))
+        dut.io.sample(j).poke(predictionData(1)(j).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
       }
       dut.clock.step(1)
       dut.io.result.valid.expect(true.B)
@@ -174,10 +174,10 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
 
   def writeTrainingData(train: Seq[Double], validate: Seq[Double], dut: NeuralNet) = {
     train.indices.foreach { i =>
-      dut.io.sample(i).poke(train(i).F(DataWidth, DataBinaryPoint))
+      dut.io.sample(i).poke(train(i).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
     }
     validate.indices.foreach { i =>
-      dut.io.validation(i).poke(validate(i).F(DataWidth, DataBinaryPoint))
+      dut.io.validation(i).poke(validate(i).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
     }
   }
 
@@ -190,20 +190,23 @@ object NeuralNetSpec {
     inputSize = 2,
     outputSize = 1,
     trainingEpochs = 2,
+    maxTrainingSamples = 10,
+    dataWidth = 32,
+    dataBinaryPoint = 16,
     layers = Seq(FCLayer(fcLayerDefaultParams)))
 
   /** A dummy layer that implements the [[NeuronState]] state machine, but simply returns
    * its input as output, for use in testing [[NeuralNet]] functionality. Note that for
    * this class to work, the input size must be the same as the output size. */
-  class DummyLayer(params: LayerParams) extends Layer(params) {
+  class DummyLayer(netParams: NeuralNetParams, params: LayerParams) extends Layer(netParams, params) {
 
     io.input.ready := true.B
     io.nextState.ready := true.B
     io.output.valid := false.B
-    io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(DataWidth, DataBinaryPoint)))
+    io.output.bits := VecInit(Seq.fill(params.outputSize)(0.F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP)))
     io.output_error.ready := true.B
     io.input_error.valid := false.B
-    io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(DataWidth, DataBinaryPoint)))
+    io.input_error.bits := VecInit(Seq.fill(params.inputSize)(0.F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP)))
 
     val state = RegInit(NeuronState.ready)
 
@@ -239,8 +242,8 @@ object NeuralNetSpec {
   }
 
   class TestLayerFactory extends LayerFactory {
-    override def apply(layerType: NeuralNet.LayerType): Layer = {
-      Module(new DummyLayer(layerType.params))
+    override def apply(netParams: NeuralNetParams, layerType: NeuralNet.LayerType): Layer = {
+      Module(new DummyLayer(netParams, layerType.params))
     }
   }
 

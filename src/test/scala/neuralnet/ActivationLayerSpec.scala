@@ -4,12 +4,13 @@ import chisel3._
 import chisel3.tester._
 import org.scalatest.FreeSpec
 import neuralnet.ActivationLayerSpec._
-import neuralnet.NeuralNet.{DataBinaryPoint, DataWidth, NeuronState}
+import neuralnet.NeuralNet.NeuronState
+import neuralnet.NeuralNetSpec.defaultNeuralNetParams
 
 class ActivationLayerSpec extends FreeSpec with ChiselScalatestTester {
 
   "Activation layer should activate values" in {
-    test(new ActivationLayer(defaultParams)) { dut =>
+    test(new ActivationLayer(defaultNeuralNetParams, defaultParams)) { dut =>
       dut.io.nextState.valid.poke(true.B)
       dut.io.nextState.ready.expect(true.B)
       dut.io.nextState.bits.poke(NeuronState.forwardProp)
@@ -17,11 +18,11 @@ class ActivationLayerSpec extends FreeSpec with ChiselScalatestTester {
       dut.io.input.valid.poke(true.B)
       dut.io.input.ready.expect(true.B)
       dut.io.input.bits.zipWithIndex.foreach {
-        case (bit, i) => bit.poke(defaultInput(i).F(DataWidth, DataBinaryPoint))
+        case (bit, i) => bit.poke(defaultInput(i).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
       }
       dut.io.output.valid.expect(true.B)
       dut.io.output.bits.zipWithIndex.map {
-        case (bit, i) => bit.expect(reluOutput(i).F(DataWidth, DataBinaryPoint))
+        case (bit, i) => bit.expect(reluOutput(i).F(defaultNeuralNetParams.dataWidth.W, defaultNeuralNetParams.dataBinaryPoint.BP))
       }
     }
   }

@@ -5,10 +5,10 @@ import chisel3._
 
 class LayerFactory {
 
-  def apply(layerType: LayerType): Layer = {
+  def apply(neuralNetParams: NeuralNetParams, layerType: LayerType): Layer = {
      Module(layerType match {
-      case FCLayer(params) => new FullyConnectedLayer(params)
-      case ALayer(params) => new ActivationLayer(params)
+      case FCLayer(params) => new FullyConnectedLayer(neuralNetParams, params)
+      case ALayer(params) => new ActivationLayer(neuralNetParams, params)
     })
   }
 }
