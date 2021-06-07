@@ -119,7 +119,7 @@ class NeuralNetSpec extends FreeSpec with ChiselScalatestTester {
     
     val fcLayer1 = FullyConnectedLayerParams(784, 32, 0.5)
     val fcLayer2 = FullyConnectedLayerParams(32, 10, 0.5)
-    val params = NeuralNetParams(784, 10, 2, Seq(FCLayer(fcLayer1), FCLayer(fcLayer2)))
+    val params = NeuralNetParams(784, 10, 2, trainingSamples, 32, 16, Seq(FCLayer(fcLayer1), FCLayer(fcLayer2)))
 
     test(buildBasicNet(params = params)) { dut =>
       dut.io.numSamples.valid.poke(true.B)
